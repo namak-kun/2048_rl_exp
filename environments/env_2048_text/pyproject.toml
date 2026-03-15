@@ -1,0 +1,23 @@
+[project]
+name = "env-2048-text"
+description = "RL environment for training LLMs to play 2048 using text/ASCII representation"
+tags = ["game", "2048", "multi-turn", "reasoning", "train", "eval"]
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "verifiers>=0.1.11.dev1",
+    "datasets",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = ["env_2048_text.py", "pyproject.toml"] 
+
+[tool.verifiers.eval]
+num_examples = 10
+rollouts_per_example = 3
+max_tokens = 2048
+temperature = 0.7

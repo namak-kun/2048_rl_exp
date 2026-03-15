@@ -1,0 +1,70 @@
+max_steps = 400
+seq_len = 4096
+
+[deployment]
+num_train_gpus = 2
+num_infer_gpus = 2
+
+[wandb]
+project = "2048-rl"
+name = "2048-qwen3-0.6b-grpo"
+
+[ckpt]
+interval = 20
+
+[model]
+name = "PrimeIntellect/Qwen3-0.6B"
+
+[orchestrator]
+batch_size = 4
+rollouts_per_example = 4
+
+# Training environment (easier: 4x4, target 2048)
+[[orchestrator.env]]
+id = "env-2048-text"
+name = "2048-train"
+args = { context_mode = "markov", max_moves = 200, max_invalid_moves = 10, grid_size = 4, target_tile = 2048 }
+
+[orchestrator.sampling]
+max_tokens = 1024
+
+# Evaluation config
+[orchestrator.eval]
+interval = 20
+
+# Eval env 1: Standard 4x4
+[[orchestrator.eval.env]]
+id = "env-2048-text"
+name = "2048-4x4-2048"
+args = { context_mode = "markov", max_moves = 200, grid_size = 4, target_tile = 2048, num_train_examples = 10, num_eval_examples = 4 }
+rollouts_per_example = 4
+
+# Eval env 2: Harder 4x4
+[[orchestrator.eval.env]]
+id = "env-2048-text"
+name = "2048-4x4-4096"
+args = { context_mode = "markov", max_moves = 300, grid_size = 4, target_tile = 4096, num_train_examples = 10, num_eval_examples = 4 }
+rollouts_per_example = 4
+
+# Eval env 3: 5x5 grid
+[[orchestrator.eval.env]]
+id = "env-2048-text"
+name = "2048-5x5-4096"
+args = { context_mode = "markov", max_moves = 400, grid_size = 5, target_tile = 4096, num_train_examples = 10, num_eval_examples = 4 }
+rollouts_per_example = 4
+
+# Eval env 4: 5x5 hard
+[[orchestrator.eval.env]]
+id = "env-2048-text"
+name = "2048-5x5-8192"
+args = { context_mode = "markov", max_moves = 500, grid_size = 5, target_tile = 8192, num_train_examples = 10, num_eval_examples = 4 }
+rollouts_per_example = 4
+
+[trainer]
+# Default GRPO settings
+
+[trainer.optim]
+lr = 5e-6
+
+[inference.parallel]
+dp = 2
