@@ -1,0 +1,54 @@
+# Stage 3: Efficiency - learn to reach high tiles faster
+max_steps = 400
+seq_len = 4096
+
+[deployment]
+num_train_gpus = 2
+num_infer_gpus = 2
+
+[wandb]
+project = "2048-rl"
+name = "2048-stage3-efficiency"
+
+[ckpt]
+interval = 20
+
+[model]
+name = "PrimeIntellect/Qwen3-0.6B"
+
+[orchestrator]
+batch_size = 4
+rollouts_per_example = 8
+
+# Training environment
+[[orchestrator.env]]
+id = "env-2048-text"
+name = "2048-train"
+args = { context_mode = "markov", max_moves = 200, max_invalid_moves = 10, grid_size = 4, target_tile = 2048, max_tile_weight = 0.0, valid_moves_weight = 0.0, num_moves_weight = 0.0, efficiency_weight = 1.0, efficiency_base_multiplier = 0.5 }
+
+[orchestrator.sampling]
+max_tokens = 1024
+
+# Evaluation config
+[orchestrator.eval]
+interval = 50
+
+[[orchestrator.eval.env]]
+id = "env-2048-text"
+name = "2048-4x4-2048"
+args = { context_mode = "markov", max_moves = 200, grid_size = 4, target_tile = 2048, num_train_examples = 10, num_eval_examples = 4, efficiency_weight = 1.0, efficiency_base_multiplier = 0.5 }
+rollouts_per_example = 4
+
+[[orchestrator.eval.env]]
+id = "env-2048-text"
+name = "2048-5x5-4096"
+args = { context_mode = "markov", max_moves = 300, grid_size = 5, target_tile = 4096, num_train_examples = 10, num_eval_examples = 4, efficiency_weight = 1.0, efficiency_base_multiplier = 0.5 }
+rollouts_per_example = 4
+
+[trainer]
+
+[trainer.optim]
+lr = 5e-6
+
+[inference.parallel]
+dp = 2

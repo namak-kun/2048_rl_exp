@@ -10,6 +10,7 @@ import random
 import re
 from copy import deepcopy
 from enum import Enum
+from functools import partial
 from typing import List, Literal, Optional, Tuple
 
 import numpy as np
@@ -927,6 +928,52 @@ def valid_moves_ratio(state: State, **kwargs) -> float:
     return 0.0
 
 
+def num_moves_reward(state: State, **kwargs) -> float:
+    """
+    Survival reward - rewards more moves (staying alive longer).
+    
+    Formula: log(num_moves + 1) / log(max_moves + 1)
+    
+    - More moves → higher reward (approaches 1)
+    - Fewer moves → lower reward (approaches 0)
+    
+    Uses total moves (valid + invalid), not just valid moves.
+    """
+    import math
+    valid_moves = state.get("valid_moves", 0)
+    invalid_moves = state.get("invalid_moves", 0)
+    num_moves = valid_moves + invalid_moves
+    
+    game: Game2048 = state.get("game")
+    max_moves = game.max_moves if game else 500
+    
+    if max_moves <= 0:
+        return 0.0
+    
+    return math.log(num_moves + 1) / math.log(max_moves + 1)
+
+
+def efficiency_reward(state: State, base_multiplier: float = 0.5, **kwargs) -> float:
+    """
+    Efficiency reward - rewards reaching high tiles in fewer moves.
+    
+    Formula: max_tile_reward * (base_multiplier + (1 - num_moves_reward))
+    
+    - base_multiplier ensures you still get reward even if you use all moves
+    - (1 - num_moves_reward) gives bonus for fewer moves
+    
+    Range: [base_multiplier, base_multiplier + 1] * max_tile_reward
+    - All moves used: max_tile_reward * base_multiplier
+    - Minimal moves: max_tile_reward * (base_multiplier + 1)
+    
+    Use in later curriculum stages after model learns to reach high tiles.
+    """
+    tile_score = max_tile_reward(state)
+    moves_score = num_moves_reward(state)
+    
+    return tile_score * (base_multiplier + (1 - moves_score))
+
+
 # =============================================================================
 # Environment Loader
 # =============================================================================
@@ -944,6 +991,12 @@ def load_environment(
     max_invalid_moves: int = 10,
     system_prompt: Optional[str] = None,
     seed: int = 42,
+    # Reward weights (set to 0 to disable)
+    max_tile_weight: float = 0.5,
+    valid_moves_weight: float = 0.5,
+    num_moves_weight: float = 0.0,
+    efficiency_weight: float = 0.0,
+    efficiency_base_multiplier: float = 0.5,
     **kwargs,
 ) -> vf.Environment:
     """
@@ -993,11 +1046,23 @@ def load_environment(
 
     # Set up rubric with reward functions
     rubric = vf.Rubric(parser=parser)
-    rubric.add_reward_func(max_tile_reward, weight=0.5)     # Progress toward winning
-    rubric.add_reward_func(valid_moves_ratio, weight=0.5)   # Follow instructions
+    
+    if max_tile_weight > 0:
+        rubric.add_reward_func(max_tile_reward, weight=max_tile_weight)
+    if valid_moves_weight > 0:
+        rubric.add_reward_func(valid_moves_ratio, weight=valid_moves_weight)
+    if num_moves_weight > 0:
+        rubric.add_reward_func(num_moves_reward, weight=num_moves_weight)
+    if efficiency_weight > 0:
+        rubric.add_reward_func(
+            partial(efficiency_reward, base_multiplier=efficiency_base_multiplier),
+            weight=efficiency_weight,
+            name="efficiency_reward"
+        )
 
     # Metrics (tracked but not used in reward)
     rubric.add_metric(efficiency_reward)
+    rubric.add_metric(num_moves_reward)
 
     return Game2048Env(
         dataset=train_dataset,
