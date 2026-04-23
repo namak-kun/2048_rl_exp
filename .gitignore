@@ -1,6 +1,13 @@
 **/.venv/**
 **/__pycache__/**
 **/outputs/**
-**/rl_outputs/**
-**/rl_outputs2/**
-**/rl_outputs3/**
+**/rl_outputs*/**
+*.ipynb
+**/.cache/**
+**/node_modules/**
+
+# Embedded repos
+2048/
+
+# Egg info
+**/*.egg-info/

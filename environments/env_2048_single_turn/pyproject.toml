@@ -1,0 +1,16 @@
+[project]
+name = "env-2048-single-turn"
+version = "0.1.0"
+description = "Single-turn 2048 environment for learning valid moves"
+requires-python = ">=3.10"
+dependencies = [
+    "verifiers",
+    "datasets",
+]
+
+[tool.setuptools]
+py-modules = ["env_2048_single_turn"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

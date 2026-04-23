@@ -1,0 +1,61 @@
+# Single-turn valid moves training
+max_steps = 200
+seq_len = 2048
+
+[deployment]
+num_train_gpus = 2
+num_infer_gpus = 2
+
+[wandb]
+project = "2048-rl"
+name = "2048-single-turn-valid-moves"
+
+[ckpt]
+interval = 20
+
+[model]
+name = "PrimeIntellect/Qwen3-0.6B"
+
+[orchestrator]
+batch_size = 64
+rollouts_per_example = 8
+
+[[orchestrator.env]]
+id = "env-2048-single-turn"
+name = "2048-single-turn"
+args = { num_train_examples = 5000, num_eval_examples = 200, grid_size = 4, target_tile = 2048, min_moves = 0, max_moves = 100, balanced_difficulty = true }
+
+[orchestrator.sampling]
+max_tokens = 1024
+
+[orchestrator.eval]
+interval = 50
+
+# Eval: 4x4 grid
+[[orchestrator.eval.env]]
+id = "env-2048-single-turn"
+name = "2048-4x4-eval"
+args = { num_train_examples = 200, num_eval_examples = 400, grid_size = 4, min_moves = 0, max_moves = 100, balanced_difficulty = true }
+rollouts_per_example = 1
+
+# Eval: 5x5 grid
+[[orchestrator.eval.env]]
+id = "env-2048-single-turn"
+name = "2048-5x5-eval"
+args = { num_train_examples = 200, num_eval_examples = 400, grid_size = 5, min_moves = 0, max_moves = 150, balanced_difficulty = true }
+rollouts_per_example = 1
+
+# Eval: 6x6 grid
+[[orchestrator.eval.env]]
+id = "env-2048-single-turn"
+name = "2048-6x6-eval"
+args = { num_train_examples = 200, num_eval_examples = 400, grid_size = 6, min_moves = 0, max_moves = 200, balanced_difficulty = true }
+rollouts_per_example = 1
+
+[trainer]
+
+[trainer.optim]
+lr = 5e-6
+
+[inference.parallel]
+dp = 2
