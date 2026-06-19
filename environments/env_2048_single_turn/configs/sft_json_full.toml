@@ -1,0 +1,33 @@
+# Full SFT on JSON format dataset
+# Mirrors original sft.toml but uses the JSON-formatted dataset.
+# Purpose: test whether the XML-vs-JSON thinking-preservation gap from LoRA
+# also holds for full FT, or is LoRA-specific.
+output_dir = "../environments/env_2048_single_turn/sft_outputs_json_full"
+max_steps = 200
+
+[deployment]
+num_gpus = 2
+
+[ckpt]
+interval = 50
+
+[model]
+name = "PrimeIntellect/Qwen3-0.6B"
+
+[data]
+type = "sft"
+name = "../environments/env_2048_single_turn/sft_data_json_parquet"
+seq_len = 512
+batch_size = 64
+
+[data.loss_mask]
+system = false
+user = false
+assistant = true
+
+[optim]
+lr = 2e-5
+
+[scheduler]
+type = "cosine"
+warmup_steps = 20

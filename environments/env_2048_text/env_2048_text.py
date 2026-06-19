@@ -6,6 +6,7 @@ The game state is presented as an ASCII table, and the LLM makes moves
 (up/down/left/right) to try to reach the 2048 tile.
 """
 
+import json as _json
 import random
 import re
 from copy import deepcopy
@@ -333,7 +334,7 @@ class Game2048:
 # Verifiers Environment
 # =============================================================================
 
-DEFAULT_SYSTEM_PROMPT = """You are playing the 2048 puzzle game. Your goal is to combine tiles by sliding them in one of four directions (up, down, left, right) to create a tile with the value {target_tile}.
+DEFAULT_SYSTEM_PROMPT_XML = """You are playing the 2048 puzzle game. Your goal is to combine tiles by sliding them in one of four directions (up, down, left, right) to create a tile with the value {target_tile}.
 
 ## Rules:
 - The board is a {grid_size}x{grid_size} grid
@@ -353,10 +354,98 @@ Example response:
 <move>up</move>
 """
 
+DEFAULT_SYSTEM_PROMPT_JSON = """You are playing the 2048 puzzle game. Your goal is to combine tiles by sliding them in one of four directions (up, down, left, right) to create a tile with the value {target_tile}.
 
-def get_system_prompt(grid_size: int = 4, target_tile: int = 2048) -> str:
-    """Generate a system prompt with the specified grid size and target tile."""
-    return DEFAULT_SYSTEM_PROMPT.format(grid_size=grid_size, target_tile=target_tile)
+## Rules:
+- The board is a {grid_size}x{grid_size} grid
+- Tiles slide as far as possible in the chosen direction
+- When two tiles with the same value collide, they merge into one tile with double the value
+- After each move, a new tile (2 or 4) appears in a random empty cell
+- The game ends when no more moves are possible
+
+## How to Play:
+Look at the current game state and choose your next move. Respond with a JSON object containing a single key "move" whose value is the direction.
+
+Valid moves are: up, down, left, right (or u, d, l, r for short).
+up slides all tiles to the top, down slides to the bottom, left slides to the left, and right slides to the right.
+
+Example response:
+{{"move": "up"}}
+"""
+
+# Backward compatibility alias
+DEFAULT_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT_XML
+
+
+def _format_instruction(output_format: str, first: bool = False) -> str:
+    """One-line instruction telling the model how to format its move."""
+    if output_format == "json":
+        if first:
+            return 'What\'s your first move? Respond with {"move": "direction"}.'
+        return 'What\'s your move? Respond with {"move": "direction"}.'
+    if first:
+        return "What's your first move? Remember to put your move inside <move>...</move> tags."
+    return "What's your move? Remember to put your move inside <move>...</move> tags."
+
+
+def _extract_move_xml(text: str) -> Optional[str]:
+    match = re.search(r"<move>\s*(.*?)\s*</move>", text, re.IGNORECASE | re.DOTALL)
+    if not match:
+        return None
+    return match.group(1).strip()
+
+
+def _extract_move_json(text: str) -> Optional[str]:
+    """Extract a move string from a JSON-formatted response. Tolerant to code fences."""
+    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL | re.IGNORECASE)
+    candidates = []
+    if fenced:
+        candidates.append(fenced.group(1))
+    brace = re.search(r"\{[^{}]*\}", text, re.DOTALL)
+    if brace:
+        candidates.append(brace.group(0))
+
+    for cand in candidates:
+        try:
+            data = _json.loads(cand)
+        except ValueError:
+            continue
+        if isinstance(data, dict) and "move" in data and isinstance(data["move"], str):
+            return data["move"].strip()
+
+    # Last-resort regex
+    kv = re.search(r'"move"\s*:\s*"([^"]+)"', text, re.IGNORECASE)
+    if kv:
+        return kv.group(1).strip()
+    return None
+
+
+def _extract_move(text: str, output_format: str) -> Optional[str]:
+    if output_format == "json":
+        return _extract_move_json(text)
+    return _extract_move_xml(text)
+
+
+def _format_help(output_format: str) -> str:
+    """Short string used in error messages to remind the model of the format."""
+    if output_format == "json":
+        return 'Respond with a JSON object like {"move": "up"} (use up/down/left/right).'
+    return "Use <move>up/down/left/right</move>."
+
+
+def get_system_prompt(
+    grid_size: int = 4,
+    target_tile: int = 2048,
+    output_format: str = "xml",
+) -> str:
+    """Generate a system prompt with the specified grid size, target tile, and output format."""
+    if output_format == "json":
+        template = DEFAULT_SYSTEM_PROMPT_JSON
+    elif output_format == "xml":
+        template = DEFAULT_SYSTEM_PROMPT_XML
+    else:
+        raise ValueError(f"Unknown output_format: {output_format!r}. Expected 'xml' or 'json'.")
+    return template.format(grid_size=grid_size, target_tile=target_tile)
 
 
 def generate_game_dataset(
@@ -364,6 +453,7 @@ def generate_game_dataset(
     grid_size: int = 4,
     target_tile: int = 2048,
     seed: int = 42,
+    output_format: str = "xml",
 ) -> Dataset:
     """
     Generate a dataset of 2048 game starting positions.
@@ -374,6 +464,8 @@ def generate_game_dataset(
         grid_size: Size of the grid (e.g., 4 for 4x4, 5 for 5x5)
         target_tile: Target tile value to win (e.g., 2048, 1024, 4096)
         seed: Random seed for reproducibility
+        output_format: "xml" or "json" — controls the move format hint in the
+            initial user prompt (must match Game2048Env.output_format).
     """
     random.seed(seed)
     
@@ -383,6 +475,8 @@ def generate_game_dataset(
         "answer": [],  # We don't have a specific answer, but include for compatibility
         "info": [],
     }
+
+    move_hint = _format_instruction(output_format, first=True)
 
     for i in range(num_examples):
         # Create a new game with specified size and target
@@ -394,7 +488,7 @@ def generate_game_dataset(
 
 {initial_state}
 
-What's your first move? Remember to put your move inside <move>...</move> tags."""
+{move_hint}"""
 
         data["task"].append("2048")
         data["prompt"].append([{"role": "user", "content": prompt_content}])
@@ -436,6 +530,7 @@ class Game2048Env(vf.MultiTurnEnv):
         summary_interval: int = 5,
         summary_model: Optional[str] = None,
         max_invalid_moves: int = 10,
+        output_format: Literal["xml", "json"] = "xml",
         **kwargs,
     ):
         """
@@ -454,6 +549,9 @@ class Game2048Env(vf.MultiTurnEnv):
             summary_interval: How often to regenerate LLM summary (every N turns)
             summary_model: Model to use for summarization (defaults to same as main model)
             max_invalid_moves: Stop if model makes this many invalid moves total
+            output_format: "xml" (<move>...</move>) or "json" ({"move": "..."}).
+                Controls how moves are parsed from assistant messages and how
+                error/continuation user messages are phrased.
         """
         # max_turns in parent class controls the game length
         super().__init__(max_turns=max_moves, **kwargs)
@@ -464,6 +562,9 @@ class Game2048Env(vf.MultiTurnEnv):
         self.summary_interval = summary_interval
         self.summary_model = summary_model
         self.max_invalid_moves = max_invalid_moves
+        if output_format not in ("xml", "json"):
+            raise ValueError(f"Unknown output_format: {output_format!r}. Expected 'xml' or 'json'.")
+        self.output_format = output_format
 
     async def setup_state(self, state: State) -> State:
         """Initialize game state for this rollout."""
@@ -500,7 +601,7 @@ class Game2048Env(vf.MultiTurnEnv):
         """Generate a prompt with just the current game state."""
         return f"""{game.get_state_text()}
 
-What's your move? Remember to put your move inside <move>...</move> tags."""
+{_format_instruction(self.output_format)}"""
 
     async def _generate_llm_summary(self, state: State) -> str:
         """Generate an LLM-based summary of the game history."""
@@ -568,7 +669,7 @@ What's your move? Remember to put your move inside <move>...</move> tags."""
 Current State:
 {game.get_state_text()}
 
-What's your move? Remember to put your move inside <move>...</move> tags."""
+{_format_instruction(self.output_format)}"""
 
     async def get_prompt_messages(self, state: State) -> Messages:
         """
@@ -760,17 +861,17 @@ What's your move? Remember to put your move inside <move>...</move> tags."""
                 break
 
         if not last_assistant_msg:
-            return [{"role": "user", "content": "Please make a move. Use <move>up/down/left/right</move>."}]
+            return [{"role": "user", "content": f"Please make a move. {_format_help(self.output_format)}"}]
 
         # Parse move from response
-        move_match = re.search(r"<move>\s*(.*?)\s*</move>", last_assistant_msg, re.IGNORECASE | re.DOTALL)
-        
-        if not move_match:
+        move_str = _extract_move(last_assistant_msg, self.output_format)
+
+        if move_str is None:
             state["invalid_moves"] += 1
             state["consecutive_invalid_moves"] += 1
             return [{
                 "role": "user",
-                "content": f"""I couldn't find your move. Please put your move inside <move>...</move> tags.
+                "content": f"""I couldn't find your move. {_format_help(self.output_format)}
 
 Current board:
 {game.get_state_text()}
@@ -779,7 +880,6 @@ Valid moves: up, down, left, right (or u, d, l, r)
 What's your move?""",
             }]
 
-        move_str = move_match.group(1).strip()
         direction = game.parse_move(move_str)
 
         if direction is None:
@@ -863,18 +963,15 @@ What's your next move?""",
 
 def score_reward(state: State, **kwargs) -> float:
     """
-    Reward based on final score.
-    Normalized by expected score for the target tile.
+    Reward based on game score, linearly normalized.
+
+    score = sum of all merged-tile values during the game (standard 2048 scoring).
+    A typical winning game scores around 20000, so we normalize by 20000 and cap at 1.0.
     """
     game: Game2048 = state.get("game")
-    if game:
-        # Scale expected score based on target tile
-        # Typical 2048 game scores ~20000, scale proportionally
-        import math
-        target = game.target_tile
-        expected_score = 20000 * (math.log2(target) / math.log2(2048))
-        return min(1.0, game.score / expected_score)
-    return 0.0
+    if not game:
+        return 0.0
+    return min(1.0, game.score / 20000.0)
 
 
 def max_tile_reward(state: State, **kwargs) -> float:
@@ -953,6 +1050,23 @@ def num_moves_reward(state: State, **kwargs) -> float:
     return math.log(num_moves + 1) / math.log(max_moves + 1)
 
 
+def max_tile_value(state: State, **kwargs) -> float:
+    """Raw max tile value achieved during the game (e.g. 64, 128, 256)."""
+    game: Game2048 = state.get("game")
+    return float(game.max_tile) if game else 0.0
+
+
+def game_score(state: State, **kwargs) -> float:
+    """Raw game score (sum of merged-tile values)."""
+    game: Game2048 = state.get("game")
+    return float(game.score) if game else 0.0
+
+
+def num_turns(state: State, **kwargs) -> float:
+    """Total number of turns the model took (valid + invalid)."""
+    return float(state.get("valid_moves", 0) + state.get("invalid_moves", 0))
+
+
 def efficiency_reward(state: State, base_multiplier: float = 0.5, **kwargs) -> float:
     """
     Efficiency reward - rewards reaching high tiles in fewer moves.
@@ -990,10 +1104,12 @@ def load_environment(
     summary_model: Optional[str] = None,
     max_invalid_moves: int = 10,
     system_prompt: Optional[str] = None,
+    output_format: Literal["xml", "json"] = "xml",
     seed: int = 42,
     # Reward weights (set to 0 to disable)
     max_tile_weight: float = 0.5,
     valid_moves_weight: float = 0.5,
+    score_weight: float = 0.0,
     num_moves_weight: float = 0.0,
     efficiency_weight: float = 0.0,
     efficiency_base_multiplier: float = 0.5,
@@ -1018,14 +1134,20 @@ def load_environment(
         summary_model: Model to use for summarization (defaults to same as main model)
         max_invalid_moves: Stop if model makes this many invalid moves (default 10)
         system_prompt: System prompt for the LLM (auto-generated if None)
+        output_format: "xml" (default — <move>up</move>) or "json" ({"move": "up"})
         seed: Random seed for reproducibility
     
     Returns:
         Configured Game2048Env instance
     """
+    if output_format not in ("xml", "json"):
+        raise ValueError(f"Unknown output_format: {output_format!r}. Expected 'xml' or 'json'.")
+
     # Generate system prompt if not provided
     if system_prompt is None:
-        system_prompt = get_system_prompt(grid_size=grid_size, target_tile=target_tile)
+        system_prompt = get_system_prompt(
+            grid_size=grid_size, target_tile=target_tile, output_format=output_format
+        )
     
     # Generate datasets with specified grid size and target
     train_dataset = generate_game_dataset(
@@ -1033,16 +1155,22 @@ def load_environment(
         grid_size=grid_size,
         target_tile=target_tile,
         seed=seed,
+        output_format=output_format,
     )
     eval_dataset = generate_game_dataset(
         num_eval_examples,
         grid_size=grid_size,
         target_tile=target_tile,
         seed=seed + 10000,
+        output_format=output_format,
     )
 
     # Set up parser for extracting moves
-    parser = vf.XMLParser(fields=["move", "reasoning"], answer_field="move")
+    if output_format == "xml":
+        parser = vf.XMLParser(fields=["move", "reasoning"], answer_field="move")
+    else:
+        # JSON parser using our tolerant extractor
+        parser = vf.Parser(extract_fn=lambda text: _extract_move_json(text) or "")
 
     # Set up rubric with reward functions
     rubric = vf.Rubric(parser=parser)
@@ -1051,6 +1179,8 @@ def load_environment(
         rubric.add_reward_func(max_tile_reward, weight=max_tile_weight)
     if valid_moves_weight > 0:
         rubric.add_reward_func(valid_moves_ratio, weight=valid_moves_weight)
+    if score_weight > 0:
+        rubric.add_reward_func(score_reward, weight=score_weight)
     if num_moves_weight > 0:
         rubric.add_reward_func(num_moves_reward, weight=num_moves_weight)
     if efficiency_weight > 0:
@@ -1063,6 +1193,9 @@ def load_environment(
     # Metrics (tracked but not used in reward)
     rubric.add_metric(efficiency_reward)
     rubric.add_metric(num_moves_reward)
+    rubric.add_metric(max_tile_value)
+    rubric.add_metric(game_score)
+    rubric.add_metric(num_turns)
 
     return Game2048Env(
         dataset=train_dataset,
@@ -1078,5 +1211,6 @@ def load_environment(
         summary_interval=summary_interval,
         summary_model=summary_model,
         max_invalid_moves=max_invalid_moves,
+        output_format=output_format,
         **kwargs,
     )

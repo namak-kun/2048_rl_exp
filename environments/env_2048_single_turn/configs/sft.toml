@@ -1,0 +1,32 @@
+# Stage 1: SFT on valid moves (no-think mode)
+# Teaches the model to output valid moves directly without reasoning
+# No wandb - metrics logged to stdout and output_dir/logs/
+output_dir = "../environments/env_2048_single_turn/sft_outputs"
+max_steps = 200
+
+[deployment]
+num_gpus = 2
+
+[ckpt]
+interval = 50
+
+[model]
+name = "PrimeIntellect/Qwen3-0.6B"
+
+[data]
+type = "sft"
+name = "../environments/env_2048_single_turn/sft_data_hf"
+seq_len = 512
+batch_size = 64
+
+[data.loss_mask]
+system = false
+user = false
+assistant = true
+
+[optim]
+lr = 2e-5
+
+[scheduler]
+type = "cosine"
+warmup_steps = 20

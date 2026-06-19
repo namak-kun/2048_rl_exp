@@ -1,0 +1,39 @@
+# Stage 1 (LoRA): SFT on valid moves (no-think mode)
+# Uses LoRA to preserve base model's thinking capability
+output_dir = "../environments/env_2048_single_turn/sft_lora_outputs"
+max_steps = 200
+
+[deployment]
+num_gpus = 2
+
+[ckpt]
+interval = 50
+
+[ckpt.weights]
+save_adapter_separately = true
+
+[model]
+name = "PrimeIntellect/Qwen3-0.6B"
+
+[model.lora]
+rank = 16
+alpha = 32.0
+target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+
+[data]
+type = "sft"
+name = "../environments/env_2048_single_turn/sft_data_hf"
+seq_len = 512
+batch_size = 64
+
+[data.loss_mask]
+system = false
+user = false
+assistant = true
+
+[optim]
+lr = 2e-4
+
+[scheduler]
+type = "cosine"
+warmup_steps = 20

@@ -1,0 +1,76 @@
+# RL: enumerate-valid-moves task, from BASE Qwen3, PR_penalty reward
+# Reward: recall * max(0, 1 - 2 * (FP/4))  — exact=1, predict-all on 2-valid=0
+output_dir = "../environments/env_2048_single_turn/rl_enum_lora_emprp_la02"
+max_steps = 200
+seq_len = 4608
+
+[deployment]
+num_train_gpus = 2
+num_infer_gpus = 2
+
+[ckpt]
+interval = 20
+
+[model]
+name = "../environments/env_2048_single_turn/lora_outputs_json/merged"
+
+[orchestrator]
+batch_size = 32
+rollouts_per_example = 8
+
+[[orchestrator.env]]
+id = "env-2048-single-turn"
+name = "2048-enum-lora-emprp-la02"
+args = { num_train_examples = 5000, num_eval_examples = 100, grid_size = 4, target_tile = 2048, balanced_difficulty = true, output_format = "json", task_type = "enumerate_all", reward_type = "em_plus_prp", pr_penalty_fp = 2.0, length_alpha = 0.2 }
+
+[orchestrator.sampling]
+max_tokens = 3072
+
+[orchestrator.sampling.extra_body]
+enable_thinking = true
+
+[orchestrator.eval]
+interval = 25
+
+[[orchestrator.eval.env]]
+id = "env-2048-single-turn"
+name = "enum-4x4-eval"
+args = { num_train_examples = 50, num_eval_examples = 50, grid_size = 4, balanced_difficulty = true, output_format = "json", task_type = "enumerate_all", reward_type = "em_plus_prp", pr_penalty_fp = 2.0 }
+rollouts_per_example = 1
+
+[[orchestrator.eval.env]]
+id = "env-2048-single-turn"
+name = "enum-5x5-eval"
+args = { num_train_examples = 50, num_eval_examples = 50, grid_size = 4, balanced_difficulty = true, output_format = "json", task_type = "enumerate_all", reward_type = "em_plus_prp", pr_penalty_fp = 2.0 }
+rollouts_per_example = 1
+
+[[orchestrator.eval.env]]
+id = "env-2048-single-turn"
+name = "enum-6x6-eval"
+args = { num_train_examples = 50, num_eval_examples = 50, grid_size = 4, balanced_difficulty = true, output_format = "json", task_type = "enumerate_all", reward_type = "em_plus_prp", pr_penalty_fp = 2.0 }
+rollouts_per_example = 1
+
+[orchestrator.eval.sampling]
+max_tokens = 3072
+
+[orchestrator.eval.sampling.extra_body]
+enable_thinking = true
+
+[trainer]
+
+[trainer.optim]
+lr = 5e-6
+
+[wandb]
+project = "2048-rl"
+name = "rl-enum-lora-emprp-la02"
+offline = true
+
+[inference]
+gpu_memory_utilization = 0.3
+
+[inference.model]
+reasoning_parser = "qwen3"
+
+[inference.parallel]
+dp = 2

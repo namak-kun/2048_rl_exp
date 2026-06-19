@@ -1,0 +1,91 @@
+# RL on real 2048 game, starting from LoRA-SFT pick_one merged checkpoint,
+# LoRA adapter training, JSON output format.
+# Same reward as rl_base_json.toml: 0.8 max_tile + 0.2 valid_moves.
+output_dir = "../environments/env_2048_text/rl_lora_json"
+max_steps = 400
+seq_len = 4096
+
+[deployment]
+num_train_gpus = 2
+num_infer_gpus = 2
+
+[wandb]
+project = "2048-rl"
+name = "2048-lora-json-grpo"
+
+[ckpt]
+interval = 50
+keep_last = 2
+
+[trainer.ckpt.weights]
+save_adapter_separately = true
+
+[model]
+name = "../environments/env_2048_single_turn/lora_outputs_json/merged"
+
+[trainer.optim]
+lr = 5e-5
+
+[trainer.model.lora]
+rank = 16
+alpha = 32
+
+[orchestrator]
+batch_size = 32
+rollouts_per_example = 8
+
+[orchestrator.model.lora]
+name = "r16-5e-5"
+
+[[orchestrator.env]]
+id = "env-2048-text"
+name = "2048-train"
+args = { context_mode = "markov", max_moves = 100, max_invalid_moves = 5, grid_size = 4, target_tile = 2048, output_format = "json", max_tile_weight = 0.8, valid_moves_weight = 0.2, num_moves_weight = 0.0, efficiency_weight = 0.0 }
+
+[orchestrator.sampling]
+max_tokens = 2048
+
+[orchestrator.sampling.extra_body.chat_template_kwargs]
+enable_thinking = true
+
+[orchestrator.eval]
+interval = 25
+
+[[orchestrator.eval.env]]
+id = "env-2048-text"
+name = "2048-4x4-2048"
+args = { context_mode = "markov", max_moves = 100, max_invalid_moves = 5, grid_size = 4, target_tile = 2048, num_train_examples = 10, num_eval_examples = 4, output_format = "json", max_tile_weight = 0.8, valid_moves_weight = 0.2 }
+rollouts_per_example = 2
+
+[[orchestrator.eval.env]]
+id = "env-2048-text"
+name = "2048-4x4-4096"
+args = { context_mode = "markov", max_moves = 150, max_invalid_moves = 5, grid_size = 4, target_tile = 4096, num_train_examples = 10, num_eval_examples = 4, output_format = "json", max_tile_weight = 0.8, valid_moves_weight = 0.2 }
+rollouts_per_example = 2
+
+[[orchestrator.eval.env]]
+id = "env-2048-text"
+name = "2048-5x5-4096"
+args = { context_mode = "markov", max_moves = 200, max_invalid_moves = 5, grid_size = 5, target_tile = 4096, num_train_examples = 10, num_eval_examples = 4, output_format = "json", max_tile_weight = 0.8, valid_moves_weight = 0.2 }
+rollouts_per_example = 2
+
+[[orchestrator.eval.env]]
+id = "env-2048-text"
+name = "2048-5x5-8192"
+args = { context_mode = "markov", max_moves = 250, max_invalid_moves = 5, grid_size = 5, target_tile = 8192, num_train_examples = 10, num_eval_examples = 4, output_format = "json", max_tile_weight = 0.8, valid_moves_weight = 0.2 }
+rollouts_per_example = 2
+
+[orchestrator.eval.sampling]
+max_tokens = 2048
+
+[orchestrator.eval.sampling.extra_body.chat_template_kwargs]
+enable_thinking = true
+
+[inference]
+enable_lora = true
+
+[inference.vllm_extra]
+trust_request_chat_template = true
+
+[inference.parallel]
+dp = 2

@@ -12,12 +12,20 @@
 
 ### Task
 - **Type**: multi-turn
-- **Output format expectations**: XML tags for move extraction (`<move>up/down/left/right</move>`) and optional reasoning (`<reasoning>...</reasoning>`)
-- **Rubric overview**: 
-  - `win_reward` (weight=0.4): Binary reward for reaching target tile
-  - `max_tile_reward` (weight=0.3): Log-scaled reward based on highest tile achieved
-  - `score_reward` (weight=0.2): Normalized game score
-  - `valid_moves_ratio` (weight=0.1): Ratio of valid to invalid moves
+- **Output format**: configurable via `output_format` argument
+  - `"xml"` (default for backward compat): `<move>up/down/left/right</move>` with optional `<reasoning>...</reasoning>`
+  - `"json"`: `{"move": "direction"}` — used by all recent RL/SFT runs
+- **Rubric**: configurable weights (set any to 0 to disable). See `load_environment` args.
+  - `max_tile_reward` (default weight 0.5): `log2(max_tile) / log2(target_tile)` — log-scaled progress
+  - `valid_moves_ratio` (default 0.5): valid / (valid + invalid) moves
+  - `score_reward` (default 0): `min(1, game.score / 20000)` — linear in raw 2048 score
+  - `num_moves_reward` (default 0): survival bonus
+  - `efficiency_reward` (default 0): bonus for winning fast
+- **Tracked metrics** (raw, for inspection):
+  - `max_tile_value` (the actual highest tile, e.g. 64, 128, 256)
+  - `game_score` (raw 2048 score)
+  - `num_turns` (total moves attempted)
+
 
 ### Game Rules
 The 2048 game follows standard rules:
@@ -197,4 +205,42 @@ What's your move? Remember to put your move inside <move>...</move> tags.
 <move>right</move>
 ```
 
-copilot --resume=81c1da82-cd8b-4a8c-91d6-b6e50c83288f
+---
+
+## Training pipeline
+
+### Scripts
+- `train_opsd_2048.py` — Standalone on-policy self-distillation trainer with
+  expectimax oracle hints. (See `expectimax_oracle.py` for the search.)
+  See [the OPSD reference repo](https://github.com/siyan-zhao/OPSD) for the
+  underlying algorithm. **Note: this approach gave a negative result on this
+  task — see ../EXPERIMENTS.md Exp 17.**
+- `expectimax_oracle.py` — Depth-N expectimax search over 2048 game tree.
+- `merge_lora.py` — Merge a PEFT LoRA adapter into a base model for vLLM serving.
+- `eval_unlimited.py` — Run multi-turn games with very high `max_moves` to see
+  what tile the model actually reaches when not capped by turn budget.
+- `smoke_test_seed.py` — Quick sanity probe: feed an env prompt to a model,
+  check it produces parseable output.
+- `test_hint_compliance.py` — Sweep multiple hint phrasings to see which
+  ones the model actually follows.
+- `test_hint_traces.py` — Dump full thinking traces for one (board, hint)
+  pair to inspect reasoning quality.
+- `debug_invalids.py` — Play full games and log per-turn validity to identify
+  whether the model is dying from format errors or no-change moves.
+
+### GRPO RL configs
+See [`../CONFIGS.md`](../CONFIGS.md) for an exhaustive guide to which TOML
+does what, ranked by performance.
+
+The current best Stage-3 recipe is `configs/rl_lora_thinkprp.toml`:
+```bash
+cd prime-rl
+uv run rl @ ../environments/env_2048_text/configs/rl_lora_thinkprp.toml
+```
+
+This requires the seed model `rl_enum_lora_prp/step_200` from the single-turn
+stage — see `../env_2048_single_turn/configs/rl_enum_lora_prp.toml`.
+
+### Project log
+[`../EXPERIMENTS.md`](../EXPERIMENTS.md) is the running document of every
+experiment, its hypothesis, configuration, and outcome. New entries at the top.

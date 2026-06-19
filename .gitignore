@@ -1,13 +1,65 @@
-**/.venv/**
+# Python
 **/__pycache__/**
-**/outputs/**
-**/rl_outputs*/**
-*.ipynb
+**/*.egg-info/
+*.pyc
+
+# Virtual envs
+**/.venv/**
+
+# Caches
 **/.cache/**
+*.ipynb_checkpoints/
+
+# Node
 **/node_modules/**
 
-# Embedded repos
-2048/
+# Notebooks
+*.ipynb
 
-# Egg info
-**/*.egg-info/
+# Embedded full external repos (cloned locally for dev)
+2048/
+prime-rl/
+verifiers/
+OPSD-ref/
+
+# Training artifacts (large, regenerable; never commit)
+# RL run outputs (per-experiment directories)
+**/rl_outputs*/
+**/rl_base_json/
+**/rl_lora_json/
+**/rl_lora_thinkprp/
+**/rl_lora_thinkprp_score/
+**/rl_stage2_v2/
+environments/env_2048_single_turn/rl_enum_*/
+environments/env_2048_single_turn/rl_outputs_new_data/
+environments/env_2048_text/outputs/
+environments/env_2048_text/rl_outputs*/
+environments/env_2048_single_turn/outputs/
+
+# OPSD training outputs
+**/opsd_runs/
+
+# SFT outputs
+environments/env_2048_single_turn/sft_outputs/
+environments/env_2048_single_turn/sft_outputs_*/
+environments/env_2048_single_turn/sft_lora_outputs/
+environments/env_2048_single_turn/lora_outputs_*/
+
+# Generated datasets (deterministically regenerable from generate_sft_data.py)
+environments/env_2048_single_turn/sft_data/
+environments/env_2048_single_turn/sft_data_*/
+
+# Eval result dumps (large json files, regenerable)
+environments/env_2048_single_turn/eval_results/
+environments/env_2048_single_turn/eval_results_*/
+environments/env_2048_single_turn/diagnose_results/
+environments/env_2048_single_turn/probe_results/
+environments/env_2048_single_turn/rollout_examples/
+environments/env_2048_single_turn/thinking_samples/
+environments/env_2048_single_turn/logs/
+environments/env_2048_text/eval_unlimited_results/
+environments/env_2048_text/smoke_results/
+environments/env_2048_text/logs/
+
+# Wandb local dirs
+**/wandb/
